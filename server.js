@@ -2,10 +2,12 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const OpenAI = require("openai");
-
+const fileUpload = require("express-fileupload");
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(fileUpload());
+
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY, // Read API key from .env file
@@ -14,29 +16,28 @@ const openai = new OpenAI({
 // YOUR ASSISTANT ID HERE
 const ASSISTANT_ID = "asst_ODSECIUwulFKZust3AB9QHkk"; // Replace with your actual Assistant ID
 
-// Route for text-based conversation
-// Store threads for each user session (temporary storage)
+// Store threads for each user session
 const userThreads = {};
 
+// Chat Route
 app.post("/chat", async (req, res) => {
   try {
-    const userId = req.body.userId || "default"; // Unique user ID (session-based)
+    const userId = req.body.userId || "default"; 
     const userMessage = req.body.message;
 
-    // Log incoming request
-    console.log(`Received message from user: ${userMessage}`);
+    console.log("Received message from user:", userMessage);
 
-    // Check if user already has a thread, otherwise create a new one
+    // Check if user already has a thread
     if (!userThreads[userId]) {
       const thread = await openai.beta.threads.create();
-      console.log("✅ Created new thread ID:", thread.id); // Debugging
+      console.log("Created new thread ID:", thread.id);
       userThreads[userId] = thread.id;
     }
 
     const threadId = userThreads[userId];
-    console.log("📌 Using thread ID:", threadId); // Debugging
+    console.log("Using thread ID:", threadId);
 
-    // Send the user's message to the assistant
+    // Send user's message to the assistant
     await openai.beta.threads.messages.create(threadId, {
       role: "user",
       content: userMessage,
@@ -47,49 +48,47 @@ app.post("/chat", async (req, res) => {
       assistant_id: ASSISTANT_ID,
     });
 
-    console.log("🚀 Started assistant run, run ID:", run.id);
+    console.log("Started assistant run, run ID:", run.id);
 
     // Wait for the assistant's response
     let runStatus;
     do {
       await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait 1 sec
-runStatus = await openai.beta.threads.runs.retrieve(threadId, run.id);
-      console.log("⏳ Run status:", runStatus.status);
+      runStatus = await openai.beta.threads.runs.retrieve(threadId, run.id);
+      console.log("Run status:", runStatus.status);
     } while (runStatus.status !== "completed");
 
-    // Retrieve the latest assistant response
-const messages = await openai.beta.threads.messages.list(threadId);
+    // Retrieve the assistant's response
+    const messages = await openai.beta.threads.messages.list(threadId);
+    const lastAssistantMessage = messages.data.reverse().find(msg => msg.role === "assistant");
 
-	  console.log("📜 All Messages in Thread:", messages.data.map(m => ({ role: m.role, content: m.content[0].text.value })));
-	  
-// Ensure messages are sorted from oldest to newest
-const sortedMessages = messages.data.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    if (lastAssistantMessage) {
+        console.log("Assistant reply:", lastAssistantMessage.content[0].text.value);
 
-// Find the latest assistant message
-const lastAssistantMessage = sortedMessages.reverse().find(msg => msg.role === "assistant");
+        // Send response as JSON (for frontend compatibility)
+        res.json({ reply: lastAssistantMessage.content[0].text.value });
 
-const assistantReply = lastAssistantMessage ? lastAssistantMessage.content[0].text.value : "No response from assistant.";
+    } else {
+        res.json({ reply: "No response from assistant." });
+    }
 
-    console.log("💬 Assistant reply:", assistantReply);
-
-    res.json({ reply: assistantReply });
   } catch (error) {
-    console.error("❌ Error in /chat route:", error);
+    console.error("Error in /chat route:", error);
     res.status(500).json({ error: "Something went wrong with the assistant." });
   }
 });
 
-// Route for voice-to-text (Speech Recognition)
+// Speech-to-Text Route
 app.post("/speech-to-text", async (req, res) => {
   try {
     const audioFile = req.files.audio; // Expecting a file upload
 
     // Convert audio to text
-const transcription = await openai.audio.transcriptions.create({
-  file: audioFile,
-  model: "whisper-1",
-  language: "de" 
-});
+    const transcription = await openai.audio.transcriptions.create({
+      file: audioFile,
+      model: "whisper-1",
+      language: "de",
+    });
 
     res.json({ text: transcription.text });
   } catch (error) {
@@ -98,12 +97,11 @@ const transcription = await openai.audio.transcriptions.create({
   }
 });
 
-// Route for text-to-speech
+// Text-to-Speech Route
 app.post("/text-to-speech", async (req, res) => {
   try {
     const { text } = req.body;
 
-    // Validate input
     if (!text) {
       return res.status(400).json({ error: "Missing text input for TTS" });
     }
@@ -116,15 +114,15 @@ app.post("/text-to-speech", async (req, res) => {
       response_format: "mp3"
     });
 
-    console.log("🔊 TTS API response received for text:", text);
+    console.log("TTS API response received for text:", text);
 
-    // ✅ Fix: Correctly handle the response stream
+    // Handle the response stream correctly
     const buffer = await response.arrayBuffer();
     res.setHeader("Content-Type", "audio/mpeg");
     res.setHeader("Content-Disposition", 'attachment; filename="response.mp3"');
     res.send(Buffer.from(buffer));
   } catch (error) {
-    console.error("❌ Text-to-speech error:", error);
+    console.error("Text-to-speech error:", error);
     res.status(500).json({ error: "TTS conversion failed." });
   }
 });
