@@ -27,7 +27,7 @@
             chatbox.innerHTML += `<p><strong>You:</strong> ${userInput}</p>`;
             document.getElementById("userInput").value = "";
 
-            let response = await fetch("http://localhost:5001/chat", {
+            let response = await fetch("https://demenzki.onrender.com/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ message: userInput })
@@ -40,7 +40,7 @@
         }
 
 function playAudio(text) {
-    fetch("http://localhost:5001/text-to-speech", {
+    fetch("https://demenzki.onrender.com/text-to-speech", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: text })
