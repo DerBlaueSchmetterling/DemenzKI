@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Assistant</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; }
+        #chatbox { width: 80%; max-width: 500px; margin: auto; padding: 10px; border: 1px solid #ccc; height: 400px; overflow-y: auto; }
+        #userInput { width: 80%; padding: 10px; }
+        button { padding: 10px; margin-top: 5px; }
+    </style>
+</head>
+<body>
+    <h1>AI Assistant</h1>
+    <div id="chatbox"></div>
+    <input type="text" id="userInput" placeholder="Type a message">
+    <button onclick="sendMessage()">Send</button>
+    <button onclick="startVoiceInput()">🎤 Speak</button>
+    <button onclick="stopVoiceInput()">🛑 Stop</button>
+
+    <script>
+        async function sendMessage() {
+            let userInput = document.getElementById("userInput").value;
+            let chatbox = document.getElementById("chatbox");
+            
+            chatbox.innerHTML += `<p><strong>You:</strong> ${userInput}</p>`;
+            document.getElementById("userInput").value = "";
+
+            let response = await fetch("http://localhost:5001/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message: userInput })
+            });
+
+            let data = await response.json();
+            chatbox.innerHTML += `<p><strong>AI:</strong> ${data.reply}</p>`;
+
+            playAudio(data.reply);
+        }
+
+function playAudio(text) {
+    fetch("http://localhost:5001/text-to-speech", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: text })
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error("❌ Failed to fetch TTS audio.");
+        }
+        return response.blob();
+    })
+    .then(blob => {
+        let audioUrl = URL.createObjectURL(blob);
+        let audio = new Audio(audioUrl);
+        audio.addEventListener("canplaythrough", () => {
+            audio.play().catch(error => console.error("❌ Audio playback error:", error));
+        });
+    })
+    .catch(error => console.error("❌ Error in playAudio:", error));
+}
+
+        let recognition;
+function startVoiceInput() {
+    recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    recognition.lang = "de-DE"; // ✅ Ensure German recognition
+    recognition.continuous = true; // ✅ Allow continuous listening
+    recognition.interimResults = false; // ✅ Only send finalized text
+    recognition.start();
+
+    recognition.onresult = async function(event) {
+        let transcript = event.results[event.results.length - 1][0].transcript;
+        document.getElementById("userInput").value = transcript;
+        sendMessage();
+    };
+
+    recognition.onerror = function(event) {
+        console.error("❌ Voice recognition error:", event.error);
+    };
+}
+
+        function stopVoiceInput() {
+            if (recognition) recognition.stop();
+        }
+    </script>
+</body>
+</html>
