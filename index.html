@@ -20,41 +20,43 @@
     <button onclick="stopVoiceInput()">🛑 Stop</button>
 
     <script>
-async function sendMessage() {
-    let userInput = document.getElementById("userInput").value;
-    let chatbox = document.getElementById("chatbox");
-    
-    chatbox.innerHTML += `<p><strong>You:</strong> ${userInput}</p>`;
-    document.getElementById("userInput").value = "";
+        async function sendMessage() {
+            let userInput = document.getElementById("userInput").value;
+            let chatbox = document.getElementById("chatbox");
+            
+            chatbox.innerHTML += `<p><strong>You:</strong> ${userInput}</p>`;
+            document.getElementById("userInput").value = "";
 
-    let response = await fetch("https://demenzki.onrender.com/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userInput })
-    });
+            let response = await fetch("https://demenzki.onrender.com/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message: userInput })
+            });
 
-    let data = await response.json();
-    chatbox.innerHTML += `<p><strong>AI:</strong> ${data.reply}</p>`;
+            let data = await response.json();
+            chatbox.innerHTML += `<p><strong>AI:</strong> ${data.reply}</p>`;
 
-    // ✅ Auto-scroll to the latest message
-    chatbox.scrollTop = chatbox.scrollHeight;
-
-    playAudio(data.reply);
-}
+            playAudio(data.reply);
+        }
 
 function playAudio(text) {
-    let audio = new Audio();
     fetch("https://demenzki.onrender.com/text-to-speech", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: text })
     })
-    .then(response => response.blob())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error("❌ Failed to fetch TTS audio.");
+        }
+        return response.blob();
+    })
     .then(blob => {
         let audioUrl = URL.createObjectURL(blob);
-        audio.src = audioUrl;
-        audio.preload = "auto";  // 🔥 Preload audio for faster playback
-        audio.play().catch(error => console.error("❌ Audio playback error:", error));
+        let audio = new Audio(audioUrl);
+        audio.addEventListener("canplaythrough", () => {
+            audio.play().catch(error => console.error("❌ Audio playback error:", error));
+        });
     })
     .catch(error => console.error("❌ Error in playAudio:", error));
 }
