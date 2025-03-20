@@ -26,14 +26,17 @@ app.post("/chat", async (req, res) => {
     // Log incoming request
     console.log(`Received message from user: ${userMessage}`);
 
-    // Check if user already has a thread, otherwise create a new one
-    if (!userThreads[userId]) {
-      const thread = await openai.beta.threads.create();
-      console.log("✅ Created new thread ID:", thread.id); // Debugging
-      userThreads[userId] = thread.id;
-    }
+ // Get the thread ID from the request, or create a new one
+let threadId = req.body.threadId;
 
-    const threadId = userThreads[userId];
+if (!threadId) {
+    const thread = await openai.beta.threads.create();
+    threadId = thread.id;
+    console.log("Created new thread ID:", threadId);
+}
+
+// Send the thread ID back to the frontend so it stays in sessionStorage
+res.json({ threadId });
     console.log("📌 Using thread ID:", threadId); // Debugging
 
     // Send the user's message to the assistant
@@ -119,10 +122,9 @@ app.post("/text-to-speech", async (req, res) => {
     console.log("🔊 TTS API response received for text:", text);
 
     // ✅ Fix: Correctly handle the response stream
-    const buffer = await response.arrayBuffer();
-    res.setHeader("Content-Type", "audio/mpeg");
-    res.setHeader("Content-Disposition", 'attachment; filename="response.mp3"');
-    res.send(Buffer.from(buffer));
+res.setHeader("Content-Type", "audio/mpeg");
+res.setHeader("Transfer-Encoding", "chunked"); // Allows real-time streaming
+response.body.pipe(res); // Stream audio directly
   } catch (error) {
     console.error("❌ Text-to-speech error:", error);
     res.status(500).json({ error: "TTS conversion failed." });
