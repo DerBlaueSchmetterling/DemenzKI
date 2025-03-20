@@ -20,126 +20,69 @@
     <button onclick="stopVoiceInput()">🛑 Stop</button>
 
     <script>
-async function sendMessage() {
-    let userInput = document.getElementById("userInput").value;
-    let chatbox = document.getElementById("chatbox");
+        async function sendMessage() {
+            let userInput = document.getElementById("userInput").value;
+            let chatbox = document.getElementById("chatbox");
+            
+            chatbox.innerHTML += `<p><strong>You:</strong> ${userInput}</p>`;
+            document.getElementById("userInput").value = "";
 
-    chatbox.innerHTML += `<p><strong>You:</strong> ${userInput}</p>`;
-    document.getElementById("userInput").value = "";
+            let response = await fetch("https://demenzki.onrender.com/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message: userInput })
+            });
 
-    // Check if thread ID exists, otherwise create one
-    let threadId = sessionStorage.getItem("threadId");
-    if (!threadId) {
-        let threadResponse = await fetch("https://demenzki.onrender.com/new-thread", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({})
-        });
-        let threadData = await threadResponse.json();
-        threadId = threadData.threadId;
-        sessionStorage.setItem("threadId", threadId);
-    }
+            let data = await response.json();
+            chatbox.innerHTML += `<p><strong>AI:</strong> ${data.reply}</p>`;
 
-    let response = await fetch("https://demenzki.onrender.com/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ threadId: threadId, message: userInput })
-    });
+            playAudio(data.reply);
+        }
 
-    let data = await response.json();
-    chatbox.innerHTML += `<p><strong>AI:</strong> ${data.reply}</p>`;
-
-    playAudio(data.reply);
-}
-
-
-async function playAudio(text) {
-    let response = await fetch("https://demenzki.onrender.com/text-to-speech", {
+function playAudio(text) {
+    fetch("https://demenzki.onrender.com/text-to-speech", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: text })
-    });
-
-    if (!response.ok) {
-        console.error("❌ Failed to fetch TTS audio.");
-        return;
-    }
-
-    // ✅ Create an AudioContext for real-time playback
-    const audioContext = new AudioContext();
-    const reader = response.body.getReader();
-    let audioChunks = [];
-
-    const audioStream = new ReadableStream({
-        start(controller) {
-            function push() {
-                reader.read().then(({ done, value }) => {
-                    if (done) {
-                        const audioBlob = new Blob(audioChunks, { type: "audio/mpeg" });
-                        const audioUrl = URL.createObjectURL(audioBlob);
-                        const audio = new Audio(audioUrl);
-                        audio.play().catch(error => console.error("❌ Audio playback error:", error));
-                        return;
-                    }
-                    audioChunks.push(value);
-                    controller.enqueue(value);
-                    push();
-                });
-            }
-            push();
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error("❌ Failed to fetch TTS audio.");
         }
-    });
-
-    const audioBlob = new Blob(audioChunks, { type: "audio/mpeg" });
-    const audioUrl = URL.createObjectURL(audioBlob);
-    const audio = new Audio(audioUrl);
-    audio.play().catch(error => console.error("❌ Audio playback error:", error));
-}		
-		
+        return response.blob();
+    })
+    .then(blob => {
+        let audioUrl = URL.createObjectURL(blob);
+        let audio = new Audio(audioUrl);
+        audio.addEventListener("canplaythrough", () => {
+            audio.play().catch(error => console.error("❌ Audio playback error:", error));
+        });
+    })
+    .catch(error => console.error("❌ Error in playAudio:", error));
+}
 
         let recognition;
-let fullTranscript = ""; // ✅ Ensure this persists between function calls
-
 function startVoiceInput() {
     recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-    recognition.lang = "de-DE"; // ✅ German speech recognition
-    recognition.continuous = false; // ✅ Only capture one sentence per activation
-    recognition.interimResults = false; // ✅ Only return final text
+    recognition.lang = "de-DE"; // ✅ Ensure German recognition
+    recognition.continuous = true; // ✅ Allow continuous listening
+    recognition.interimResults = false; // ✅ Only send finalized text
+    recognition.start();
 
-    recognition.onresult = function(event) {
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-            fullTranscript += event.results[i][0].transcript + " ";
-        }
-        document.getElementById("userInput").value = fullTranscript.trim();
-    };
-
-    recognition.onend = function() {
-        if (fullTranscript.length > 0) {
-            sendMessage();
-            fullTranscript = ""; // ✅ Reset for next input
-        }
+    recognition.onresult = async function(event) {
+        let transcript = event.results[event.results.length - 1][0].transcript;
+        document.getElementById("userInput").value = transcript;
+        sendMessage();
     };
 
     recognition.onerror = function(event) {
         console.error("❌ Voice recognition error:", event.error);
     };
-
-    recognition.start();
 }
 
-function stopVoiceInput() {
-    if (recognition) {
-        recognition.stop();
-        if (fullTranscript.length > 0) {
-            sendMessage();
-            fullTranscript = ""; // ✅ Reset after sending
+        function stopVoiceInput() {
+            if (recognition) recognition.stop();
         }
-    }
-}
-		// Reset thread ID when page refreshes
-window.onload = function() {
-    sessionStorage.removeItem("threadId"); // Clears the thread on refresh
-};
     </script>
 </body>
 </html>
